@@ -15,11 +15,30 @@ Key capabilities:
 - Platform-agnostic: works with MT5, Binance, Alpaca, or any trading platform
 - MT5 auto-sync via mt5_sync.py (polls every 60 seconds)
 
+## Install
+
+### Claude Desktop
+Add to claude_desktop_config.json:
+{
+  "mcpServers": {
+    "tradememory": {
+      "command": "uvx",
+      "args": ["tradememory-protocol"]
+    }
+  }
+}
+
+### Claude Code
+claude mcp add tradememory -- uvx tradememory-protocol
+
+### pip
+pip install tradememory-protocol
+
 ## Documentation
 
 - [README](https://github.com/mnemox-ai/tradememory-protocol#readme): Full documentation with architecture diagrams.
 - [PyPI](https://pypi.org/project/tradememory-protocol/): Install via `pip install tradememory-protocol`.
-- [Quick Start](https://github.com/mnemox-ai/tradememory-protocol#quick-start): Multiple installation methods (MCP, source, Docker).
+- [Quick Start](https://github.com/mnemox-ai/tradememory-protocol#quick-start): Multiple installation methods (Claude Desktop, Claude Code, source, Docker).
 
 ## MCP Tools
 
