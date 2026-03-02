@@ -164,6 +164,21 @@ docker build -t tradememory .
 docker run -p 8000:8000 -e ANTHROPIC_API_KEY=your-key tradememory
 ```
 
+### As OpenClaw Skill
+
+Give your OpenClaw agent trading memory:
+
+```
+Install this skill: https://github.com/mnemox-ai/tradememory-protocol
+```
+
+Then tell your agent via WhatsApp:
+- *"Record my XAUUSD trade: long 0.05 lots, +$40 profit"*
+- *"Show my trading performance this week"*
+- *"Run a reflection on my last 20 trades"*
+
+See [.skills/tradememory/SKILL.md](.skills/tradememory/SKILL.md) for the full skill reference.
+
 ### Tutorials
 
 - [English Tutorial](docs/TUTORIAL.md) — Step-by-step from install to using memory in trades
