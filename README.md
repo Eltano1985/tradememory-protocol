@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.mnemox-ai/tradememory-protocol -->
 # TradeMemory Protocol
 
 **A [Mnemox](https://mnemox.ai) Project** — MCP server that gives AI trading agents persistent memory.

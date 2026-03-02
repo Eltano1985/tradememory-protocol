@@ -64,6 +64,9 @@ scripts/debug/
 # Internal docs (not public-facing)
 .internal/
 
+# MCP Registry (auth tokens — never commit)
+.mcpregistry_*
+
 # OS
 .DS_Store
 Thumbs.db
