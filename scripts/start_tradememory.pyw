@@ -79,12 +79,27 @@ log(f"Server started, PID={server_pid}")
 # Wait for server to be ready
 time.sleep(5)
 
-# Start mt5_sync.py
-sync_pid = start_detached(
-    [PYTHON, "-u", str(PROJECT / "mt5_sync.py")],
-    "mt5_sync.log"
-)
-log(f"mt5_sync started, PID={sync_pid}")
+# Start mt5_sync.py with watchdog (auto-restart on crash)
+def mt5_sync_watchdog():
+    """Keep mt5_sync.py alive — restart on crash/exit."""
+    RESTART_DELAY = 30
+    while True:
+        log("mt5_sync watchdog: starting mt5_sync.py...")
+        log_file = open(LOGS / "mt5_sync_session.log", "a", encoding="utf-8")
+        proc = subprocess.Popen(
+            [PYTHON, "-u", str(PROJECT / "mt5_sync.py")],
+            cwd=str(PROJECT),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+        log(f"mt5_sync started, PID={proc.pid}")
+        proc.wait()  # Block until process exits
+        log(f"mt5_sync exited (code={proc.returncode}). Restarting in {RESTART_DELAY}s...")
+        time.sleep(RESTART_DELAY)
+
+sync_thread = threading.Thread(target=mt5_sync_watchdog, daemon=True)
+sync_thread.start()
+log("mt5_sync watchdog thread started")
 
 # Start reflection scheduler in background thread
 t = threading.Thread(target=reflection_scheduler, daemon=True)

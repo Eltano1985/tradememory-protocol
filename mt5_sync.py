@@ -1,17 +1,28 @@
 """
-MT5 Sync Script - Non-invasive trade synchronization
+MT5 Sync Script v2 - Non-invasive trade synchronization
 監控本地 MT5 terminal，將交易記錄同步到 TradeMemory
 
 Architecture: NG_Gold EA 不做任何修改，此腳本獨立運行監控交易
+
+v2 improvements (2026-03-03):
+- UTC timestamps for MT5 API calls (fixes timezone mismatch)
+- Persistent last_synced_ticket via JSON state file (survives crash/restart)
+- Threading-based timeout for MT5 API calls (prevents infinite hang on Windows)
+- Broader exception handling in sync_trade_to_memory
+- MT5 health check before each sync cycle
+- Structured error recovery with max consecutive error limit
+- Skip position_id=0 (balance operations)
 """
 
 import os
 import sys
 import time
+import json
 import logging
+import threading
 import requests
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, List, Tuple
 from dotenv import load_dotenv
 
 # Setup logging to both file and console
@@ -25,6 +36,13 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("mt5_sync")
+
+# Reconfigure stdout for Windows UTF-8
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Load environment variables
 load_dotenv()
@@ -46,12 +64,45 @@ MAGIC_TO_STRATEGY = {
     20260217: "Pullback",          # NG_Pullback_Entry.mq5
 }
 
-# State tracking
-last_synced_ticket = 0
+# State file for crash recovery (same directory as script)
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_sync_state.json")
+
+# Timeout for MT5 API calls (seconds)
+MT5_API_TIMEOUT = 30
+
+# Max consecutive errors before long wait
+MAX_CONSECUTIVE_ERRORS = 10
+LONG_WAIT_SECONDS = 300  # 5 minutes
+
+
+def load_state() -> dict:
+    """Load persistent state from JSON file."""
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r") as f:
+                state = json.load(f)
+            log.info(f"Loaded state: last_synced_ticket={state.get('last_synced_ticket', 0)}")
+            return state
+    except Exception as e:
+        log.warning(f"Could not load state file: {e}")
+    return {"last_synced_ticket": 0}
+
+
+def save_state(last_synced_ticket: int):
+    """Save persistent state to JSON file."""
+    try:
+        state = {
+            "last_synced_ticket": last_synced_ticket,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        log.warning(f"Could not save state file: {e}")
 
 
 def init_mt5() -> bool:
-    """Initialize MT5 connection"""
+    """Initialize MT5 connection."""
     try:
         import MetaTrader5 as MT5
 
@@ -78,65 +129,118 @@ def init_mt5() -> bool:
         return False
 
 
-def get_new_closed_trades() -> list:
+def is_mt5_alive() -> bool:
+    """Quick health check — is MT5 Terminal responsive? (with 10s timeout)"""
+    try:
+        import MetaTrader5 as MT5
+        result, timed_out = mt5_api_call_with_timeout(
+            lambda: MT5.account_info(),
+            timeout_seconds=10
+        )
+        if timed_out:
+            log.warning("MT5 health check timed out after 10s")
+            return False
+        return result is not None
+    except Exception:
+        return False
+
+
+def mt5_api_call_with_timeout(func, timeout_seconds: int = MT5_API_TIMEOUT):
+    """
+    Execute an MT5 API call with a timeout (Windows-compatible using threading).
+    Returns (result, timed_out).
+    """
+    result_container = {"value": None, "error": None}
+
+    def worker():
+        try:
+            result_container["value"] = func()
+        except Exception as e:
+            result_container["error"] = e
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+
+    if thread.is_alive():
+        log.error(f"MT5 API call timed out after {timeout_seconds}s")
+        return None, True
+
+    if result_container["error"]:
+        raise result_container["error"]
+
+    return result_container["value"], False
+
+
+def get_new_closed_trades(last_synced_ticket: int) -> Tuple[list, bool]:
     """
     Get newly closed trades since last sync.
-    
+
+    Args:
+        last_synced_ticket: Position ID of the last synced trade
+
     Returns:
-        List of closed positions (grouped deals)
+        (list_of_closed_positions, timed_out)
     """
     import MetaTrader5 as MT5
-    global last_synced_ticket
-    
-    # Get history from last sync time
-    from_date = datetime(2020, 1, 1)  # Far enough back to catch all
-    to_date = datetime.now()
-    
-    history = MT5.history_deals_get(from_date, to_date)
-    
+
+    # Use UTC timestamps explicitly — MT5 API expects UTC
+    from_date = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    to_date = datetime.now(timezone.utc)
+
+    # Call with timeout to prevent infinite hang
+    history, timed_out = mt5_api_call_with_timeout(
+        lambda: MT5.history_deals_get(from_date, to_date)
+    )
+
+    if timed_out:
+        return [], True
+
     if history is None or len(history) == 0:
-        return []
-    
+        return [], False
+
     # Group by position ticket
     positions = {}
     for deal in history:
         ticket = deal.position_id
+        if ticket == 0:
+            continue  # Skip balance operations / deposits / withdrawals
         if ticket not in positions:
             positions[ticket] = []
         positions[ticket].append(deal)
-    
+
     # Filter new closed positions (has both entry and exit)
     new_trades = []
     for ticket, deals in positions.items():
         if ticket <= last_synced_ticket:
             continue  # Already synced
-        
+
         # Check if position is closed (has exit deal)
         has_entry = any(d.entry == 0 for d in deals)  # DEAL_ENTRY_IN
         has_exit = any(d.entry == 1 for d in deals)   # DEAL_ENTRY_OUT
-        
+
         if has_entry and has_exit:
             new_trades.append({
                 'ticket': ticket,
                 'deals': sorted(deals, key=lambda d: d.time)
             })
-    
-    return new_trades
+
+    return new_trades, False
 
 
 def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
     """
     Sync one closed position to TradeMemory.
-    
+
     Args:
         position: Dict with 'ticket' and 'deals'
-    
+
     Returns:
         True if successful
     """
     ticket = position['ticket']
     deals = position['deals']
-    
+
     entry_deal = deals[0]
     exit_deal = deals[-1]
 
@@ -157,15 +261,15 @@ def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
     # Calculate P&L
     pnl = sum(d.profit for d in deals)
 
-    # Timestamps
-    entry_time = datetime.fromtimestamp(entry_deal.time).isoformat()
-    exit_time = datetime.fromtimestamp(exit_deal.time).isoformat()
+    # Timestamps (use UTC)
+    entry_time = datetime.fromtimestamp(entry_deal.time, tz=timezone.utc).isoformat()
+    exit_time = datetime.fromtimestamp(exit_deal.time, tz=timezone.utc).isoformat()
 
     # Hold duration (minutes)
     hold_duration = int((exit_deal.time - entry_deal.time) / 60)
 
-    # Market context
-    hour = datetime.fromtimestamp(entry_deal.time).hour
+    # Market context (use UTC hour for session)
+    hour = datetime.fromtimestamp(entry_deal.time, tz=timezone.utc).hour
     if 0 <= hour < 8:
         session = "asian"
     elif 8 <= hour < 16:
@@ -178,8 +282,8 @@ def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
         "session": session,
         "magic_number": magic
     }
-    
-    # Record decision
+
+    # Record decision + outcome
     try:
         decision_resp = requests.post(
             f"{TRADEMEMORY_API}/trade/record_decision",
@@ -194,13 +298,13 @@ def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
                 "market_context": market_context,
                 "references": []
             },
-            timeout=5
+            timeout=10
         )
-        
+
         if decision_resp.status_code != 200:
-            log.error(f"Failed to record decision for {trade_id}: {decision_resp.text}")
+            log.error(f"Failed to record decision for {trade_id}: {decision_resp.status_code} {decision_resp.text[:200]}")
             return False
-        
+
         # Record outcome
         outcome_resp = requests.post(
             f"{TRADEMEMORY_API}/trade/record_outcome",
@@ -211,32 +315,42 @@ def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
                 "exit_reasoning": "Position closed",
                 "hold_duration": hold_duration
             },
-            timeout=5
+            timeout=10
         )
-        
+
         if outcome_resp.status_code != 200:
-            log.error(f"Failed to record outcome for {trade_id}: {outcome_resp.text}")
+            log.error(f"Failed to record outcome for {trade_id}: {outcome_resp.status_code} {outcome_resp.text[:200]}")
             return False
-        
+
         log.info(f"SYNC {trade_id}: {strategy} {symbol} {direction} {lot_size} lots, P&L: ${pnl:.2f}, Duration: {hold_duration}min")
         return True
-    
+
     except requests.exceptions.RequestException as e:
-        log.error(f"API request failed for {trade_id}: {e}")
+        log.error(f"API network error for {trade_id}: {e}")
+        return False
+    except (ValueError, KeyError) as e:
+        log.error(f"API response parsing error for {trade_id}: {e}")
+        return False
+    except Exception as e:
+        log.error(f"Unexpected error syncing {trade_id}: {e}")
         return False
 
 
 def main_loop():
     """Main synchronization loop — resilient to transient errors."""
-    global last_synced_ticket
 
     log.info("=" * 60)
-    log.info("MT5 → TradeMemory Sync Script")
+    log.info("MT5 → TradeMemory Sync Script v2")
     log.info("=" * 60)
     log.info(f"API Endpoint: {TRADEMEMORY_API}")
     log.info(f"Sync Interval: {SYNC_INTERVAL}s")
     log.info(f"MT5 Account: {MT5_LOGIN} @ {MT5_SERVER}")
+    log.info(f"State File: {STATE_FILE}")
     log.info("=" * 60)
+
+    # Load persistent state
+    state = load_state()
+    last_synced_ticket = state.get("last_synced_ticket", 0)
 
     # Initial MT5 connection with retry
     mt5_connected = False
@@ -245,7 +359,7 @@ def main_loop():
         if init_mt5():
             mt5_connected = True
             break
-        wait = min(60 * attempt, 300)  # 60s, 120s, 180s, 240s, 300s
+        wait = min(60 * attempt, 300)
         log.warning(f"MT5 init attempt {attempt}/{MAX_INIT_RETRIES} failed, retry in {wait}s...")
         time.sleep(wait)
 
@@ -253,7 +367,7 @@ def main_loop():
         log.error(f"Cannot connect to MT5 after {MAX_INIT_RETRIES} attempts. Exiting.")
         return
 
-    log.info("Monitoring started. Press Ctrl+C to stop.")
+    log.info(f"Monitoring started. last_synced_ticket={last_synced_ticket}. Press Ctrl+C to stop.")
 
     consecutive_errors = 0
     heartbeat_counter = 0
@@ -262,17 +376,47 @@ def main_loop():
     try:
         while True:
             try:
-                # Check for new trades
-                new_trades = get_new_closed_trades()
+                # Health check before scanning
+                if not is_mt5_alive():
+                    log.warning("MT5 health check failed, attempting reconnect...")
+                    try:
+                        import MetaTrader5 as MT5
+                        MT5.shutdown()
+                    except Exception:
+                        pass
+                    if init_mt5():
+                        log.info("MT5 reconnected after health check failure.")
+                    else:
+                        consecutive_errors += 1
+                        log.error(f"MT5 reconnect failed ({consecutive_errors})")
+                        raise ConnectionError("MT5 not responsive")
+
+                # Check for new trades (with timeout protection)
+                new_trades, timed_out = get_new_closed_trades(last_synced_ticket)
+
+                if timed_out:
+                    consecutive_errors += 1
+                    log.error(f"MT5 API timed out ({consecutive_errors}), forcing reconnect")
+                    try:
+                        import MetaTrader5 as MT5
+                        MT5.shutdown()
+                    except Exception:
+                        pass
+                    init_mt5()
+                    raise TimeoutError("MT5 API call timed out")
 
                 if len(new_trades) > 0:
                     log.info(f"Found {len(new_trades)} new closed trade(s)")
+                    synced_count = 0
 
                     for position in new_trades:
-                        sync_trade_to_memory(position)
-                        last_synced_ticket = max(last_synced_ticket, position['ticket'])
+                        if sync_trade_to_memory(position):
+                            synced_count += 1
+                            last_synced_ticket = max(last_synced_ticket, position['ticket'])
 
-                    log.info(f"Sync complete. Last ticket: {last_synced_ticket}")
+                    # Save state AFTER successful syncs
+                    save_state(last_synced_ticket)
+                    log.info(f"Sync complete. {synced_count}/{len(new_trades)} synced. Last ticket: {last_synced_ticket}")
 
                 # Reset error counter on success
                 consecutive_errors = 0
@@ -280,16 +424,19 @@ def main_loop():
                 # Heartbeat log
                 heartbeat_counter += 1
                 if heartbeat_counter >= HEARTBEAT_INTERVAL:
-                    log.info(f"[HEARTBEAT] alive, last_ticket={last_synced_ticket}")
+                    log.info(f"[HEARTBEAT] alive, last_ticket={last_synced_ticket}, mt5={is_mt5_alive()}")
                     heartbeat_counter = 0
 
+            except (ConnectionError, TimeoutError):
+                # Already logged above, just handle backoff below
+                pass
             except Exception as e:
                 consecutive_errors += 1
-                log.error(f"Sync cycle error ({consecutive_errors}): {e}")
+                log.error(f"Sync cycle error ({consecutive_errors}): {e}", exc_info=True)
 
                 # Try to reconnect MT5 after repeated failures
                 if consecutive_errors >= 3:
-                    log.warning("3+ consecutive errors, attempting MT5 reconnect...")
+                    log.warning(f"{consecutive_errors} consecutive errors, attempting MT5 reconnect...")
                     try:
                         import MetaTrader5 as MT5
                         MT5.shutdown()
@@ -301,22 +448,30 @@ def main_loop():
                     else:
                         log.error("MT5 reconnect failed, will retry next cycle.")
 
+            # Safety valve: too many errors → long wait
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                log.error(f"{MAX_CONSECUTIVE_ERRORS}+ errors. Long wait {LONG_WAIT_SECONDS}s...")
+                time.sleep(LONG_WAIT_SECONDS)
+                consecutive_errors = 0
+                continue
+
             # Backoff sleep on errors, normal sleep otherwise
             if consecutive_errors > 0:
-                sleep_time = min(SYNC_INTERVAL * (2 ** consecutive_errors), 600)
-                log.info(f"Backoff sleep: {sleep_time}s")
+                sleep_time = min(SYNC_INTERVAL * (2 ** min(consecutive_errors, 4)), 600)
+                log.info(f"Backoff sleep: {sleep_time}s (errors: {consecutive_errors})")
                 time.sleep(sleep_time)
             else:
                 time.sleep(SYNC_INTERVAL)
 
     except KeyboardInterrupt:
         log.info("Shutting down gracefully...")
+        save_state(last_synced_ticket)
         try:
             import MetaTrader5 as MT5
             MT5.shutdown()
         except Exception:
             pass
-        log.info("Disconnected from MT5. Goodbye!")
+        log.info(f"Final state saved: last_ticket={last_synced_ticket}. Goodbye!")
 
 
 if __name__ == "__main__":

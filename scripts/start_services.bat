@@ -26,9 +26,9 @@ start /B "" "%PYTHON%" -c "import sys; sys.path.insert(0, 'src'); from tradememo
 REM --- Wait for server to be ready ---
 timeout /t 5 /nobreak > nul
 
-REM --- Start mt5_sync.py (background) ---
-echo Starting mt5_sync.py...
-start /B "" "%PYTHON%" -u "%PROJECT_DIR%\mt5_sync.py" >> "%LOG_DIR%\mt5_sync.log" 2>&1
+REM --- Start mt5_sync.py via watchdog (auto-restart on crash) ---
+echo Starting mt5_sync.py (with watchdog auto-restart)...
+start /MIN "" "%PROJECT_DIR%\scripts\watchdog_mt5_sync.bat"
 
 echo [%date% %time%] All services started. >> "%LOG_DIR%\startup.log"
 echo.
