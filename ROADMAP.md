@@ -82,12 +82,12 @@
 
 ## Phase 4：Hosted API MVP（本月）
 
-### Task 4.1：設計 API 架構 ❌
+### Task 4.1：設計 API 架構 ✅
 - `docs/hosted-api-spec.md`
-- REST API 端點定義
-- 認證方式（API Key）
-- Rate limiting
-- 定價邏輯（credit 制 + 月費制）
+- REST API 端點定義（L1 store/recall、performance、reflection、L2 patterns、L3 adjustments）
+- 認證方式（API Key：`tm_live_*` / `tm_test_*`）
+- Rate limiting（sliding window per plan）
+- 定價邏輯（Free/Trader/Pro/Fund 月費 + Starter/Growth/Scale credit packs）
 - Commit: `docs: add hosted API specification`
 
 ### Task 4.2：建立 FastAPI server ❌
@@ -129,5 +129,5 @@
 | Phase 1：OpenClaw Skill | ✅ 完成 | 2026-03-03 |
 | Phase 2：Landing Page | ✅ 完成 | 2026-03-03 |
 | Phase 3：推廣素材 | ✅ 完成 | 2026-03-03 |
-| Phase 4：Hosted API | ❌ 未開始 | - |
+| Phase 4：Hosted API | 🔄 進行中 | - |
 | Phase 5：Payment Rails | ❌ 未開始 | - |
