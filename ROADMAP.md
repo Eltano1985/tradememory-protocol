@@ -66,7 +66,7 @@
 - 語調：交易者對交易者，不是工程師對工程師
 - Commit: `docs: add Forex Factory promotional content`
 
-### Task 3.2：撰寫 Reddit/MQL5 推廣帖 ❌
+### Task 3.2：撰寫 Reddit/MQL5 推廣帖 ✅
 - `marketing/reddit-post.md`
 - `marketing/mql5-post.md`
 - 每個平台語調略有不同
