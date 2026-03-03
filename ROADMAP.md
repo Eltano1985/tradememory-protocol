@@ -47,13 +47,13 @@
 - Claude Desktop 整合說明
 - Commit: `feat: add TradeMemory landing page` → `95cd5a7`
 
-### Task 2.2：建立 Pricing Page ❌
-- 在 landing page 下方或獨立頁面
+### Task 2.2：建立 Pricing Page ✅
+- 在 landing page 下方加入 Pricing section
 - 三個方案：Trader $29/月、Pro $79/月、Fund $299/月
-- Credit 制 pay-as-you-go 選項
+- Credit 制 pay-as-you-go 選項（Starter/Growth/Scale packs）
 - 「Coming Soon」標記（Hosted API 還沒建好）
-- 早鳥註冊表單（收集 email）
-- Commit: `feat: add pricing page`
+- 早鳥註冊表單（收集 email，50% off 前 3 個月）
+- Commit: `feat: add pricing page` → `2e28b65`（mnemox-ai.github.io repo）
 
 ---
 
@@ -127,7 +127,7 @@
 | Phase | 狀態 | 完成日期 |
 |-------|------|----------|
 | Phase 1：OpenClaw Skill | ✅ 完成 | 2026-03-03 |
-| Phase 2：Landing Page | ❌ 未開始 | - |
+| Phase 2：Landing Page | ✅ 完成 | 2026-03-03 |
 | Phase 3：推廣素材 | ❌ 未開始 | - |
 | Phase 4：Hosted API | ❌ 未開始 | - |
 | Phase 5：Payment Rails | ❌ 未開始 | - |
