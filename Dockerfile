@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 LABEL maintainer="Mnemox <contact@mnemox.ai>"
-LABEL description="TradeMemory Protocol — Persistent memory layer for AI trading agents"
+LABEL description="TradeMemory Hosted API — Multi-tenant AI Trading Memory API"
 
 WORKDIR /app
 
@@ -16,14 +16,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ src/
-COPY demo.py .
-COPY .env.example .
+COPY hosted/ hosted/
 
 # Create data directory for SQLite
 RUN mkdir -p data
 
-# Expose MCP server port
-EXPOSE 8000
+# Expose hosted API port
+EXPOSE 8080
 
-# Default: start MCP server
-CMD ["python", "-m", "src.tradememory.server"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health')" || exit 1
+
+# Run hosted API server
+CMD ["uvicorn", "hosted.server:app", "--host", "0.0.0.0", "--port", "8080"]

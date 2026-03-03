@@ -97,11 +97,12 @@
 - SQLite 儲存（account isolation）+ 22 tests
 - Commit: `feat: add hosted API server (MVP)` → `1ef9e23`
 
-### Task 4.3：部署到 mcp.mnemox.ai ❌
-- Dockerfile
-- docker-compose.yml
-- 部署文件
-- Health check endpoint
+### Task 4.3：部署到 mcp.mnemox.ai ✅
+- Dockerfile（hosted API + HEALTHCHECK）
+- docker-compose.yml（API + Caddy reverse proxy, auto-TLS）
+- Caddyfile（mcp.mnemox.ai domain config）
+- 部署文件（docs/deployment.md）
+- Health check endpoint（`/api/v1/health`，已有）
 - Commit: `feat: add deployment configuration`
 
 ---
