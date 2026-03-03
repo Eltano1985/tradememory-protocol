@@ -39,13 +39,13 @@
 
 ## Phase 2：Landing Page + Pricing（本週）
 
-### Task 2.1：建立 TradeMemory Landing Page ❌
+### Task 2.1：建立 TradeMemory Landing Page ✅
 - 在 mnemox.ai repo 建立 /tradememory 頁面
 - Hero section：「AI Trading Memory for MT5/Forex Traders」
 - 功能展示：3-Layer Memory、AI Reflection、Pattern Discovery、Daily Reports
 - 示範 GIF 或截圖（可以先用 placeholder）
 - Claude Desktop 整合說明
-- Commit: `feat: add TradeMemory landing page`
+- Commit: `feat: add TradeMemory landing page` → `95cd5a7`
 
 ### Task 2.2：建立 Pricing Page ❌
 - 在 landing page 下方或獨立頁面
