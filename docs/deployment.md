@@ -25,7 +25,7 @@ docker compose up -d
 
 # Verify
 curl https://mcp.mnemox.ai/api/v1/health
-# → {"status":"healthy","version":"0.3.0"}
+# → {"status":"healthy","version":"0.3.1"}
 ```
 
 ## Architecture

@@ -218,7 +218,7 @@ graph TD
 
 ---
 
-## MCP Tools (v0.2.0)
+## MCP Tools (v0.3.1)
 
 ### Core Memory Tools (MCP — via `uvx tradememory-protocol`)
 - `store_trade_memory` — Store a trade decision with full context into memory
