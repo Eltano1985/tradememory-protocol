@@ -90,12 +90,12 @@
 - 定價邏輯（Free/Trader/Pro/Fund 月費 + Starter/Growth/Scale credit packs）
 - Commit: `docs: add hosted API specification`
 
-### Task 4.2：建立 FastAPI server ❌
+### Task 4.2：建立 FastAPI server ✅
 - `hosted/server.py`
 - 實作基本端點：store_trade、recall_trades、get_performance
-- API key 認證
-- SQLite → PostgreSQL migration plan
-- Commit: `feat: add hosted API server (MVP)`
+- API key 認證（Bearer tm_live_* / tm_test_*）
+- SQLite 儲存（account isolation）+ 22 tests
+- Commit: `feat: add hosted API server (MVP)` → `1ef9e23`
 
 ### Task 4.3：部署到 mcp.mnemox.ai ❌
 - Dockerfile
