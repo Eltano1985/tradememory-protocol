@@ -3,9 +3,9 @@ Reflection Runner - 產生 daily / weekly / monthly 反思報告
 建議排程：daily 23:55, weekly 週日 23:55, monthly 每月最後一天 23:55
 
 Usage:
-    python daily_reflection.py              # daily (default)
-    python daily_reflection.py --weekly     # weekly
-    python daily_reflection.py --monthly    # monthly
+    python scripts/daily_reflection.py              # daily (default)
+    python scripts/daily_reflection.py --weekly     # weekly
+    python scripts/daily_reflection.py --monthly    # monthly
 """
 
 import argparse

@@ -309,4 +309,4 @@ else:
 ---
 
 **最後更新**：2026-02-23  
-**維護者**：小柯 (XiaoKe)
+**Maintainer**: Sean / Mnemox AI

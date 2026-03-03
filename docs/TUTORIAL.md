@@ -19,7 +19,7 @@ By the end of this tutorial, you'll see an AI agent go from "stateless calculato
 ### Option A: One-line install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/scripts/install.sh | bash
 cd tradememory-protocol
 ```
 
@@ -49,7 +49,7 @@ python -m pytest tests/ -q
 ## Step 2: Run the Demo (2 minutes)
 
 ```bash
-python demo.py
+python scripts/demo.py
 ```
 
 This runs 30 simulated XAUUSD trades through the full pipeline. No API key needed.
@@ -207,7 +207,7 @@ pip install -r requirements.txt  # Ensure all deps installed
 ```bash
 # On Windows, ensure UTF-8:
 set PYTHONIOENCODING=utf-8
-python demo.py
+python scripts/demo.py
 ```
 
 ---

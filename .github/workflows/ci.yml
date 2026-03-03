@@ -30,4 +30,4 @@ jobs:
         run: python -m pytest tests/ -v
 
       - name: Run demo (smoke test)
-        run: python demo.py
+        run: python scripts/demo.py

@@ -22,7 +22,7 @@
 
 ```bash
 cd tradememory-protocol
-python demo.py
+python scripts/demo.py
 ```
 
 **Voiceover:**
@@ -157,7 +157,7 @@ MT5 Terminal
 github.com/mnemox-ai/tradememory-protocol
 pip install tradememory-protocol
 
-Open source · MCP Server · 4 tools · 181 tests
+Open source · MCP Server · 4 tools · 203 tests
 ```
 
 **DO NOT say:**
@@ -180,7 +180,7 @@ Open source · MCP Server · 4 tools · 181 tests
 
 ### demo.py Modifications for Video
 The current `demo.py` already has all 6 steps. For the video:
-- Run `python demo.py` and let it stream naturally
+- Run `python scripts/demo.py` and let it stream naturally
 - Pause at each step header for 2-3 seconds (let viewer read)
 - If demo.py output is too fast, add `time.sleep()` between steps
 

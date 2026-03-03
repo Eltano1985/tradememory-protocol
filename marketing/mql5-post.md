@@ -153,7 +153,7 @@ pip install tradememory-protocol
 
 **Run the demo (no API key needed):**
 ```bash
-python demo.py
+python scripts/demo.py
 ```
 
 Runs 30 simulated XAUUSD trades through L1 → L2 → L3 pipeline. Output shows trade recording, pattern discovery, and strategy adjustment proposals.

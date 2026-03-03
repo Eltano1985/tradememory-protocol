@@ -34,7 +34,7 @@ schtasks /create /tn "TradeMemory Daily Reflection" /tr "C:\OpenClawWork\trademe
 手動執行腳本測試：
 
 ```bash
-python daily_reflection.py
+python scripts/daily_reflection.py
 ```
 
 預期輸出：
@@ -115,7 +115,7 @@ def anthropic_llm_provider(model, prompt):
 - ✅ `reflections/` 目錄可寫入
 
 **測試方式**：
-1. 手動執行 `python daily_reflection.py`
+1. 手動執行 `python scripts/daily_reflection.py`
 2. 檢查 `reflections/` 是否產生檔案
 3. 檢查 Task Scheduler 執行歷史（是否成功）
 
@@ -182,4 +182,4 @@ curl http://localhost:8000/health
 ---
 
 **最後更新**：2026-02-23  
-**維護者**：小柯 (XiaoKe)
+**Maintainer**: Sean / Mnemox AI

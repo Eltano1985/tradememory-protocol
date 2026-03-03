@@ -2,6 +2,8 @@
 
 import os
 import pytest
+
+pytest.importorskip("fastapi", reason="fastapi not installed — hosted server tests skipped")
 from fastapi.testclient import TestClient
 
 

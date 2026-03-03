@@ -74,7 +74,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ### 方式 A：命令列直接運行（測試用）
 
 ```bash
-python mt5_sync.py
+python scripts/mt5_sync.py
 ```
 
 輸出範例：
@@ -106,7 +106,7 @@ MT5 Account: your_login_here @ YourBroker-Server
 ```batch
 @echo off
 cd /d C:\OpenClawWork\tradememory-protocol
-python mt5_sync.py
+python scripts/mt5_sync.py
 pause
 ```
 
@@ -249,4 +249,4 @@ pip install MetaTrader5
 ---
 
 **最後更新**：2026-02-23  
-**維護者**：小柯 (XiaoKe)
+**Maintainer**: Sean / Mnemox AI

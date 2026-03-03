@@ -104,7 +104,7 @@ Trade 30:    Agent has personalized, data-driven trading strategy
 ## Try It Yourself
 
 ```bash
-python demo.py
+python scripts/demo.py
 ```
 
 No API key needed. See the full L1 → L2 → L3 pipeline in under 2 minutes.

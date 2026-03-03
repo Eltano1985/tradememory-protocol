@@ -40,7 +40,7 @@ Those are dashboards for humans. TradeMemory is a memory layer for AI agents. Yo
 - 4 EAs on XAUUSD, Demo @ FXTM (~$11K balance)
 - mt5_sync.py running 24/7 with auto-reconnect + watchdog
 - Daily reflection at 23:55 UTC
-- 181 tests passing
+- 203 tests passing
 - Last notable trade: VB BUY +$1,175 (03/02)
 
 **97 parameter combinations backtested** (10,169 trades, 2024.01–2026.02):
@@ -79,7 +79,7 @@ Then ask your AI: "Show my trading performance this week" or "Run a reflection o
 - GitHub: https://github.com/mnemox-ai/tradememory-protocol (34 stars, MIT)
 - PyPI: `pip install tradememory-protocol`
 - Landing page: https://mnemox.ai/tradememory
-- Demo: `python demo.py` — 30 simulated trades through the full pipeline, no API key needed
+- Demo: `python scripts/demo.py` — 30 simulated trades through the full pipeline, no API key needed
 
 Happy to answer technical questions. This is a real tool I use daily, not a whitepaper.
 

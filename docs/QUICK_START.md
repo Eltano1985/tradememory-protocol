@@ -80,7 +80,7 @@ requests.post(f"{API}/trade/record_outcome", json={
 ## 5. Run Daily Reflection
 
 ```bash
-python daily_reflection.py
+python scripts/daily_reflection.py
 ```
 
 This analyzes all trades from today and generates a structured reflection report in `reflections/`.

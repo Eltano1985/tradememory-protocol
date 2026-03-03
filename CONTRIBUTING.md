@@ -178,7 +178,7 @@ Use the [Feature Request template](https://github.com/mnemox-ai/tradememory-prot
 
 Before contributing, understand the key design principles:
 
-1. **Platform-agnostic core** — TradeMemory does NOT connect to brokers directly. Broker-specific code stays in adapters (`trade_adapter.py`, `mt5_sync.py`).
+1. **Platform-agnostic core** — TradeMemory does NOT connect to brokers directly. Broker-specific code stays in adapters (`scripts/trade_adapter.py`, `scripts/mt5_sync.py`).
 2. **3-Layer Memory** — L1 (Hot/RAM), L2 (Warm/JSON), L3 (Cold/SQLite). Respect the layer boundaries.
 3. **All timestamps in UTC** — No exceptions.
 4. **LLM outputs are untrusted** — Always validate and provide fallback defaults.

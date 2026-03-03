@@ -20,7 +20,7 @@ metadata:
 
 Give your AI agent persistent trading memory. TradeMemory records every trade decision, discovers patterns across sessions, uses AI to reflect on your trading behavior, and automatically adjusts risk recommendations. It works with MT5, Binance, Alpaca, or any platform that outputs trade data.
 
-Built on MCP (Model Context Protocol). 181 tests passing. MIT licensed.
+Built on MCP (Model Context Protocol). 203 tests passing. MIT licensed.
 
 ## Installation
 
@@ -55,11 +55,11 @@ python -m src.tradememory.server
 # Runs on http://localhost:8000
 
 # 5. Start MT5 sync (in a second terminal)
-python mt5_sync.py
+python scripts/mt5_sync.py
 # Polls MT5 every 60 seconds for closed trades
 ```
 
-See [MT5_SYNC_SETUP.md](https://github.com/mnemox-ai/tradememory-protocol/blob/master/MT5_SYNC_SETUP.md) for the full setup guide, auto-start configuration, and troubleshooting.
+See [MT5_SYNC_SETUP.md](https://github.com/mnemox-ai/tradememory-protocol/blob/master/docs/MT5_SYNC_SETUP.md) for the full setup guide, auto-start configuration, and troubleshooting.
 
 ## Available Commands
 
@@ -197,4 +197,4 @@ Free tier: local install (this version). Pro tier: hosted API with cloud reflect
 - GitHub: https://github.com/mnemox-ai/tradememory-protocol
 - PyPI: https://pypi.org/project/tradememory-protocol/
 - Documentation: https://github.com/mnemox-ai/tradememory-protocol/blob/master/docs/TUTORIAL.md
-- Demo: `python demo.py` (30 simulated trades, no API key needed)
+- Demo: `python scripts/demo.py` (30 simulated trades, no API key needed)

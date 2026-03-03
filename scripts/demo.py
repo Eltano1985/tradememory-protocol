@@ -6,7 +6,7 @@ No API key required. Uses simulated XAUUSD trades to demonstrate
 the full L1 (record) → L2 (discover patterns) → L3 (strategy adjustment) pipeline.
 
 Usage:
-    python demo.py
+    python scripts/demo.py
 """
 
 import sys

@@ -97,7 +97,7 @@ pip install -e .
 No API key needed. Runs 30 simulated XAUUSD trades through the full pipeline:
 
 ```bash
-python demo.py
+python scripts/demo.py
 ```
 
 Output shows: trade recording (L1) → pattern discovery (L2) → strategy adjustments (L3) → agent reloading state with memory.
@@ -188,30 +188,25 @@ See [.skills/tradememory/SKILL.md](.skills/tradememory/SKILL.md) for the full sk
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  AI Trading Agent (Claude / GPT / Custom)                   │
-│  Calls TradeMemory MCP tools:                               │
-│  - trade.record_decision(reasoning, confidence, ...)        │
-│  - trade.record_outcome(pnl, exit_reasoning, ...)           │
-│  - state.load() → get learned patterns                      │
-└─────────────────────────────┬───────────────────────────────┘
-                              │ MCP Protocol
-┌─────────────────────────────▼───────────────────────────────┐
-│  TradeMemory Protocol Server                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ TradeJournal │→ │ReflectionEng │→ │ StateManager │      │
-│  │ Records all  │  │ Analyzes     │  │ Persists     │      │
-│  │ decisions &  │  │ patterns,    │  │ learned      │      │
-│  │ outcomes     │  │ generates    │  │ insights     │      │
-│  │              │  │ insights     │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-│                                                              │
-│  3-Layer Memory:                                             │
-│  L1 (Hot):  Active trades, current session context           │
-│  L2 (Warm): Curated insights from reflection engine          │
-│  L3 (Cold): Full trade history (SQLite)                      │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A["AI Trading Agent<br/>(Claude / GPT / Custom)"] -->|MCP Protocol| B["TradeMemory Server"]
+
+    subgraph B["TradeMemory Protocol Server"]
+        J["TradeJournal<br/>Records decisions & outcomes"]
+        R["ReflectionEngine<br/>Analyzes patterns, generates insights"]
+        S["StateManager<br/>Persists learned knowledge"]
+        J --> R --> S
+    end
+
+    subgraph M["3-Layer Memory"]
+        L1["L1 Hot — RAM<br/>Active trades, session context"]
+        L2["L2 Warm — JSON<br/>Curated insights from reflection"]
+        L3["L3 Cold — SQLite<br/>Full trade history"]
+    end
+
+    B --> M
+    MT5["MT5 / Binance / Alpaca"] -->|"scripts/mt5_sync.py"| J
 ```
 
 ### Data Flow
@@ -258,7 +253,7 @@ Full API reference: [docs/API.md](docs/API.md)
 - Daily reflection engine (rule-based + optional LLM)
 - State persistence (cross-session memory)
 - Streamlit dashboard
-- 181 unit tests passing
+- 203 unit tests passing
 - Interactive demo (`demo.py`)
 - Weekly/monthly reflection cycles
 - Adaptive risk algorithms
@@ -283,7 +278,7 @@ Full API reference: [docs/API.md](docs/API.md)
 - **Reflection:** Rule-based pattern analysis, optional Claude API for deeper insights
 - **Broker Integration:** MT5 Python API (Phase 1)
 - **Dashboard:** Streamlit + Plotly
-- **Testing:** pytest (181 tests)
+- **Testing:** pytest (203 tests)
 
 ---
 
@@ -297,8 +292,8 @@ Full API reference: [docs/API.md](docs/API.md)
 - [API Reference](docs/API.md)
 - [Data Schema](docs/SCHEMA.md)
 - [Reflection Report Format](docs/REFLECTION_FORMAT.md)
-- [MT5 Setup Guide](MT5_SYNC_SETUP.md)
-- [Daily Reflection Setup](DAILY_REFLECTION_SETUP.md)
+- [MT5 Setup Guide](docs/MT5_SYNC_SETUP.md)
+- [Daily Reflection Setup](docs/DAILY_REFLECTION_SETUP.md)
 
 ---
 
@@ -334,7 +329,7 @@ scripts/start_services.bat
 scripts\install_autostart.bat
 ```
 
-This registers a Windows Task Scheduler task that starts the tradememory server and mt5_sync.py 30 seconds after login.
+This registers a Windows Task Scheduler task that starts the tradememory server and `scripts/mt5_sync.py` 30 seconds after login.
 
 ```
 scripts/
@@ -352,7 +347,7 @@ python -c "import sys; sys.path.insert(0, 'src'); from tradememory.server import
 # Runs on http://localhost:8000
 
 # Terminal 2: Start MT5 sync (scans every 60s)
-python mt5_sync.py
+python scripts/mt5_sync.py
 ```
 
 ### Daily Reflection
@@ -362,17 +357,17 @@ python mt5_sync.py
 # Linux/Mac: 55 23 * * * /path/to/daily_reflection.sh
 ```
 
-See [MT5 Setup Guide](MT5_SYNC_SETUP.md) for detailed configuration.
+See [MT5 Setup Guide](docs/MT5_SYNC_SETUP.md) for detailed configuration.
 
 ---
 
 ## FAQ
 
 **Does TradeMemory connect directly to my broker?**
-No. TradeMemory is a memory layer, not a trading platform connector. It accepts standardized trade data from any source. For MT5 users, `mt5_sync.py` automatically polls and syncs closed trades every 60 seconds.
+No. TradeMemory is a memory layer, not a trading platform connector. It accepts standardized trade data from any source. For MT5 users, `scripts/mt5_sync.py` automatically polls and syncs closed trades every 60 seconds.
 
 **What trading platforms are supported?**
-Any platform that can output trade data. Built-in support exists for MetaTrader 5 via mt5_sync.py. For other platforms (Binance, Alpaca, Interactive Brokers), you send trades through the MCP `store_trade` tool or REST API using a standardized format.
+Any platform that can output trade data. Built-in support exists for MetaTrader 5 via `scripts/mt5_sync.py`. For other platforms (Binance, Alpaca, Interactive Brokers), you send trades through the MCP `store_trade` tool or REST API using a standardized format.
 
 **What data does it store?**
 Three layers: L1 stores raw trade records (symbol, direction, lots, entry/exit price, PnL, timestamps). L2 stores discovered patterns (win rate by session, drawdown sequences). L3 stores strategy-level insights from LLM reflection.

@@ -19,7 +19,7 @@
 ### 方案 A：一行安裝
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/scripts/install.sh | bash
 cd tradememory-protocol
 ```
 
@@ -49,7 +49,7 @@ python -m pytest tests/ -q
 ## 第二步：執行 Demo（2 分鐘）
 
 ```bash
-python demo.py
+python scripts/demo.py
 ```
 
 這會跑 30 筆模擬的 XAUUSD 交易，走完整個 pipeline。不需要 API key。
@@ -207,7 +207,7 @@ pip install -r requirements.txt  # 確認所有套件已安裝
 ```bash
 # 在 Windows 上，確保 UTF-8：
 set PYTHONIOENCODING=utf-8
-python demo.py
+python scripts/demo.py
 ```
 
 ---

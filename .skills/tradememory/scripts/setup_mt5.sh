@@ -20,7 +20,7 @@ if [[ "$OSTYPE" != "msys" && "$OSTYPE" != "cygwin" && "$OSTYPE" != "win32" ]]; t
     echo "         - Sending trades through the REST API"
     echo "         - Writing a custom sync script for your platform"
     echo ""
-    echo "See: https://github.com/mnemox-ai/tradememory-protocol/blob/master/MT5_SYNC_SETUP.md"
+    echo "See: https://github.com/mnemox-ai/tradememory-protocol/blob/master/docs/MT5_SYNC_SETUP.md"
     exit 0
 fi
 
@@ -110,5 +110,5 @@ echo "  Terminal 1:  python3 -m src.tradememory.server"
 echo "  Terminal 2:  python3 mt5_sync.py"
 echo ""
 echo "Trades will auto-sync every 60 seconds."
-echo "Full guide: https://github.com/mnemox-ai/tradememory-protocol/blob/master/MT5_SYNC_SETUP.md"
+echo "Full guide: https://github.com/mnemox-ai/tradememory-protocol/blob/master/docs/MT5_SYNC_SETUP.md"
 echo ""

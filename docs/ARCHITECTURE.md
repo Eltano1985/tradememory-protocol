@@ -15,7 +15,7 @@ Internal architecture of TradeMemory Protocol: module structure, data flow, SQLi
         ▼              ▼              ▼              ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Adapter Layer                                                   │
-│  trade_adapter.py / mt5_sync.py / (future: binance_adapter.py)  │
+│  scripts/trade_adapter.py / scripts/mt5_sync.py                  │
 │  Converts platform-specific data → standardized TradeRecord      │
 └──────────────────────────┬───────────────────────────────────────┘
                            │ TradeRecord (Pydantic model)
@@ -64,10 +64,10 @@ Internal architecture of TradeMemory Protocol: module structure, data flow, SQLi
 | **ReflectionEngine** | `src/tradememory/reflection.py` | Daily summary generation, LLM integration, output validation |
 | **MT5Connector** | `src/tradememory/mt5_connector.py` | MT5 trade sync (guarded import, graceful degradation) |
 | **Server** | `src/tradememory/server.py` | FastAPI endpoints exposing all modules as HTTP tools |
-| **Trade Adapter** | `trade_adapter.py` | MT5 deal → TradeRecord conversion (standalone script) |
-| **MT5 Sync** | `mt5_sync.py` | Standalone MT5 polling service (60s interval) |
-| **Daily Reflection** | `daily_reflection.py` | Scheduled reflection runner (cron/Task Scheduler) |
-| **Dashboard** | `dashboard.py` | Streamlit monitoring UI |
+| **Trade Adapter** | `scripts/trade_adapter.py` | MT5 deal → TradeRecord conversion (standalone script) |
+| **MT5 Sync** | `scripts/mt5_sync.py` | Standalone MT5 polling service (60s interval) |
+| **Daily Reflection** | `scripts/daily_reflection.py` | Scheduled reflection runner (cron/Task Scheduler) |
+| **Dashboard** | `scripts/dashboard.py` | Streamlit monitoring UI |
 
 ---
 
@@ -260,7 +260,7 @@ MT5 Terminal (running EA)
     │
     │  MetaTrader5 Python API (guarded import)
     ▼
-mt5_sync.py / MT5Connector.sync_trades()
+scripts/mt5_sync.py / MT5Connector.sync_trades()
     │  Polls every 60s for closed positions
     │  Groups MT5 deals by position_id
     │  Extracts entry/exit, calculates P&L
@@ -278,7 +278,7 @@ L3 (SQLite)
 ### Daily Reflection Flow
 
 ```
-daily_reflection.py (Task Scheduler / cron at 23:55)
+scripts/daily_reflection.py (Task Scheduler / cron at 23:55)
     │
     ▼
 ReflectionEngine.generate_daily_summary(target_date)
@@ -304,7 +304,7 @@ Saved to reflections/YYYY-MM-DD.md by the caller
 
 ## Design Principles
 
-1. **Platform-agnostic core.** MT5 code is isolated in `trade_adapter.py`, `mt5_sync.py`, and `mt5_connector.py`. Core modules (`journal`, `state`, `reflection`) know nothing about brokers. Adding a new broker means writing a new adapter.
+1. **Platform-agnostic core.** MT5 code is isolated in `scripts/trade_adapter.py`, `scripts/mt5_sync.py`, and `mt5_connector.py`. Core modules (`journal`, `state`, `reflection`) know nothing about brokers. Adding a new broker means writing a new adapter.
 
 2. **LLM outputs are validated before L2 storage.** Every LLM response passes through `_validate_llm_output()`. Invalid output triggers a deterministic rule-based fallback. This prevents garbage from entering the agent's learned knowledge.
 

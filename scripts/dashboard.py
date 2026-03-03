@@ -725,7 +725,7 @@ def main():
                     with st.expander(f"Week ending {ref['date']}"):
                         st.text(ref['content'])
             else:
-                st.info("No weekly reflection reports yet. Run: python daily_reflection.py --weekly")
+                st.info("No weekly reflection reports yet. Run: python scripts/daily_reflection.py --weekly")
 
         with tab_monthly:
             if monthly_refs:
@@ -733,7 +733,7 @@ def main():
                     with st.expander(f"Month {ref['month']}"):
                         st.text(ref['content'])
             else:
-                st.info("No monthly reflection reports yet. Run: python daily_reflection.py --monthly")
+                st.info("No monthly reflection reports yet. Run: python scripts/daily_reflection.py --monthly")
     else:
         st.info("No weekly/monthly reflection reports found. Generate them with --weekly or --monthly flags.")
 

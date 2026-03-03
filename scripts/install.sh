@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TradeMemory Protocol — One-Click Install Script
-# Usage: curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/mnemox-ai/tradememory-protocol/master/scripts/install.sh | bash
 # Or:    bash install.sh
 
 set -e
@@ -103,7 +103,7 @@ echo -e "  ${GREEN}Installation complete!${NC}"
 echo "========================================"
 echo ""
 echo "  Quick start:"
-echo "    python demo.py              # Run interactive demo (no API key needed)"
+echo "    python scripts/demo.py       # Run interactive demo (no API key needed)"
 echo "    python -m src.tradememory.server  # Start MCP server"
 echo ""
 echo "  For full setup, edit .env with your credentials."
