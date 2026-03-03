@@ -115,12 +115,12 @@
 - Repo: https://github.com/mnemox-ai/agent-payment-rails
 - Commit: `feat: initial repo with vision document` → `f87eafc`
 
-### Task 5.2：撰寫 MVP Spec ❌
+### Task 5.2：撰寫 MVP Spec ✅
 - `docs/mvp-spec.md`
 - Stripe integration plan
 - Agent wallet 概念
 - Fiat on/off-ramp 流程
-- Commit: `docs: add MVP specification`
+- Commit: `docs: add MVP specification` → `4d2339c`
 
 ---
 
@@ -131,5 +131,5 @@
 | Phase 1：OpenClaw Skill | ✅ 完成 | 2026-03-03 |
 | Phase 2：Landing Page | ✅ 完成 | 2026-03-03 |
 | Phase 3：推廣素材 | ✅ 完成 | 2026-03-03 |
-| Phase 4：Hosted API | 🔄 進行中 | - |
-| Phase 5：Payment Rails | 🔄 進行中 | - |
+| Phase 4：Hosted API | ✅ 完成 | 2026-03-03 |
+| Phase 5：Payment Rails | ✅ 完成 | 2026-03-03 |
