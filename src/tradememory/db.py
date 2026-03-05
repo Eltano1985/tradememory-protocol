@@ -134,6 +134,143 @@ class Database:
                 ON strategy_adjustments(adjustment_type)
             """)
 
+            # ========== OWM Tables ==========
+
+            # Episodic Memory (Section 2.1)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS episodic_memory (
+                    id TEXT PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    context_json TEXT NOT NULL,
+                    context_regime TEXT,
+                    context_volatility_regime TEXT,
+                    context_session TEXT,
+                    context_atr_d1 REAL,
+                    context_atr_h1 REAL,
+                    strategy TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    lot_size REAL,
+                    exit_price REAL,
+                    pnl REAL,
+                    pnl_r REAL,
+                    hold_duration_seconds INTEGER,
+                    max_adverse_excursion REAL,
+                    reflection TEXT,
+                    confidence REAL DEFAULT 0.5,
+                    tags TEXT,
+                    retrieval_strength REAL DEFAULT 1.0,
+                    retrieval_count INTEGER DEFAULT 0,
+                    last_retrieved TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episodic_regime
+                ON episodic_memory(context_regime)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episodic_strategy
+                ON episodic_memory(strategy)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episodic_timestamp
+                ON episodic_memory(timestamp DESC)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episodic_pnl_r
+                ON episodic_memory(pnl_r)
+            """)
+
+            # Semantic Memory (Section 2.2 — confidence/uncertainty computed in Python)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS semantic_memory (
+                    id TEXT PRIMARY KEY,
+                    proposition TEXT NOT NULL,
+                    alpha REAL NOT NULL DEFAULT 1.0,
+                    beta REAL NOT NULL DEFAULT 1.0,
+                    sample_size INTEGER NOT NULL DEFAULT 0,
+                    strategy TEXT,
+                    symbol TEXT,
+                    regime TEXT,
+                    volatility_regime TEXT,
+                    validity_conditions TEXT,
+                    last_confirmed TEXT,
+                    last_contradicted TEXT,
+                    source TEXT NOT NULL,
+                    retrieval_strength REAL DEFAULT 1.0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # Procedural Memory (Section 2.3)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS procedural_memory (
+                    id TEXT PRIMARY KEY,
+                    strategy TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    behavior_type TEXT NOT NULL,
+                    sample_size INTEGER NOT NULL DEFAULT 0,
+                    avg_hold_winners REAL,
+                    avg_hold_losers REAL,
+                    disposition_ratio REAL,
+                    actual_lot_mean REAL,
+                    actual_lot_variance REAL,
+                    kelly_fraction_suggested REAL,
+                    lot_vs_kelly_ratio REAL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # Affective State (Section 2.4 — single row, no GENERATED ALWAYS)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS affective_state (
+                    id TEXT PRIMARY KEY,
+                    confidence_level REAL NOT NULL DEFAULT 0.5,
+                    risk_appetite REAL NOT NULL DEFAULT 1.0,
+                    momentum_bias REAL NOT NULL DEFAULT 0.0,
+                    peak_equity REAL NOT NULL,
+                    current_equity REAL NOT NULL,
+                    drawdown_state REAL NOT NULL DEFAULT 0.0,
+                    max_acceptable_drawdown REAL NOT NULL DEFAULT 0.20,
+                    consecutive_wins INTEGER NOT NULL DEFAULT 0,
+                    consecutive_losses INTEGER NOT NULL DEFAULT 0,
+                    last_updated TEXT NOT NULL,
+                    history_json TEXT DEFAULT '[]'
+                )
+            """)
+
+            # Prospective Memory (Section 2.5)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS prospective_memory (
+                    id TEXT PRIMARY KEY,
+                    trigger_type TEXT NOT NULL,
+                    trigger_condition TEXT NOT NULL,
+                    planned_action TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    priority REAL NOT NULL DEFAULT 0.5,
+                    expiry TEXT,
+                    source_episodic_ids TEXT,
+                    source_semantic_ids TEXT,
+                    reasoning TEXT NOT NULL,
+                    triggered_at TEXT,
+                    outcome_pnl_r REAL,
+                    outcome_reflection TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_prospective_status
+                ON prospective_memory(status)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_prospective_trigger
+                ON prospective_memory(trigger_type)
+            """)
+
             conn.commit()
         finally:
             conn.close()
@@ -571,6 +708,449 @@ class Database:
             return result.rowcount > 0
         except Exception as e:
             print(f"Error updating adjustment status: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ========== OWM: Episodic Memory ==========
+
+    def insert_episodic(self, data: Dict[str, Any]) -> bool:
+        """Insert an episodic memory record."""
+        conn = self._get_connection()
+        try:
+            if isinstance(data.get('tags'), (list, dict)):
+                data['tags'] = json.dumps(data['tags'])
+            if isinstance(data.get('context_json'), dict):
+                data['context_json'] = json.dumps(data['context_json'])
+            if 'created_at' not in data:
+                data['created_at'] = datetime.utcnow().isoformat()
+            conn.execute("""
+                INSERT INTO episodic_memory (
+                    id, timestamp, context_json, context_regime,
+                    context_volatility_regime, context_session,
+                    context_atr_d1, context_atr_h1,
+                    strategy, direction, entry_price, lot_size,
+                    exit_price, pnl, pnl_r, hold_duration_seconds,
+                    max_adverse_excursion, reflection, confidence,
+                    tags, retrieval_strength, retrieval_count,
+                    last_retrieved, created_at
+                ) VALUES (
+                    :id, :timestamp, :context_json, :context_regime,
+                    :context_volatility_regime, :context_session,
+                    :context_atr_d1, :context_atr_h1,
+                    :strategy, :direction, :entry_price, :lot_size,
+                    :exit_price, :pnl, :pnl_r, :hold_duration_seconds,
+                    :max_adverse_excursion, :reflection, :confidence,
+                    :tags, :retrieval_strength, :retrieval_count,
+                    :last_retrieved, :created_at
+                )
+            """, data)
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error inserting episodic memory: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def query_episodic(
+        self,
+        strategy: Optional[str] = None,
+        regime: Optional[str] = None,
+        direction: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Query episodic memories with filters."""
+        conn = self._get_connection()
+        try:
+            query = "SELECT * FROM episodic_memory WHERE 1=1"
+            params: list[Any] = []
+            if strategy:
+                query += " AND strategy = ?"
+                params.append(strategy)
+            if regime:
+                query += " AND context_regime = ?"
+                params.append(regime)
+            if direction:
+                query += " AND direction = ?"
+                params.append(direction)
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for row in rows:
+                d = dict(row)
+                d['context_json'] = json.loads(d['context_json']) if d['context_json'] else {}
+                d['tags'] = json.loads(d['tags']) if d['tags'] else []
+                results.append(d)
+            return results
+        finally:
+            conn.close()
+
+    def update_episodic_retrieval(self, memory_id: str) -> bool:
+        """Increment retrieval_count and update last_retrieved."""
+        conn = self._get_connection()
+        try:
+            now = datetime.utcnow().isoformat()
+            result = conn.execute(
+                "UPDATE episodic_memory SET retrieval_count = retrieval_count + 1, "
+                "last_retrieved = ? WHERE id = ?",
+                (now, memory_id),
+            )
+            conn.commit()
+            return result.rowcount > 0
+        except Exception as e:
+            print(f"Error updating episodic retrieval: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ========== OWM: Semantic Memory ==========
+
+    def insert_semantic(self, data: Dict[str, Any]) -> bool:
+        """Insert a semantic memory record."""
+        conn = self._get_connection()
+        try:
+            if isinstance(data.get('validity_conditions'), (dict, list)):
+                data['validity_conditions'] = json.dumps(data['validity_conditions'])
+            now = datetime.utcnow().isoformat()
+            data.setdefault('alpha', 1.0)
+            data.setdefault('beta', 1.0)
+            data.setdefault('sample_size', 0)
+            data.setdefault('retrieval_strength', 1.0)
+            data.setdefault('created_at', now)
+            data.setdefault('updated_at', now)
+            conn.execute("""
+                INSERT INTO semantic_memory (
+                    id, proposition, alpha, beta, sample_size,
+                    strategy, symbol, regime, volatility_regime,
+                    validity_conditions, last_confirmed, last_contradicted,
+                    source, retrieval_strength, created_at, updated_at
+                ) VALUES (
+                    :id, :proposition, :alpha, :beta, :sample_size,
+                    :strategy, :symbol, :regime, :volatility_regime,
+                    :validity_conditions, :last_confirmed, :last_contradicted,
+                    :source, :retrieval_strength, :created_at, :updated_at
+                )
+            """, data)
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error inserting semantic memory: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def query_semantic(
+        self,
+        strategy: Optional[str] = None,
+        symbol: Optional[str] = None,
+        regime: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Query semantic memories with filters. Computes confidence/uncertainty in Python."""
+        conn = self._get_connection()
+        try:
+            query = "SELECT * FROM semantic_memory WHERE 1=1"
+            params: list[Any] = []
+            if strategy:
+                query += " AND strategy = ?"
+                params.append(strategy)
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            if regime:
+                query += " AND regime = ?"
+                params.append(regime)
+            query += " ORDER BY updated_at DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for row in rows:
+                d = dict(row)
+                d['validity_conditions'] = json.loads(d['validity_conditions']) if d['validity_conditions'] else None
+                a, b = d['alpha'], d['beta']
+                d['confidence'] = a / (a + b) if (a + b) > 0 else 0.5
+                d['uncertainty'] = (a * b) / ((a + b) ** 2 * (a + b + 1)) if (a + b) > 0 else 1.0
+                results.append(d)
+            return results
+        finally:
+            conn.close()
+
+    def update_semantic_bayesian(
+        self,
+        memory_id: str,
+        confirmed: bool,
+        weight: float = 1.0,
+        evidence_id: Optional[str] = None,
+    ) -> bool:
+        """Update semantic memory Bayesian parameters (alpha/beta).
+
+        Args:
+            memory_id: Semantic memory ID to update
+            confirmed: True = confirming evidence, False = contradicting
+            weight: Bayesian update weight (default 1.0)
+            evidence_id: Optional episodic memory ID that provided evidence
+        """
+        conn = self._get_connection()
+        try:
+            now = datetime.utcnow().isoformat()
+            ref = evidence_id or now
+            if confirmed:
+                result = conn.execute(
+                    "UPDATE semantic_memory SET alpha = alpha + ?, "
+                    "sample_size = sample_size + 1, last_confirmed = ?, "
+                    "updated_at = ? WHERE id = ?",
+                    (weight, ref, now, memory_id),
+                )
+            else:
+                result = conn.execute(
+                    "UPDATE semantic_memory SET beta = beta + ?, "
+                    "sample_size = sample_size + 1, last_contradicted = ?, "
+                    "updated_at = ? WHERE id = ?",
+                    (weight, ref, now, memory_id),
+                )
+            conn.commit()
+            return result.rowcount > 0
+        except Exception as e:
+            print(f"Error updating semantic bayesian: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ========== OWM: Procedural Memory ==========
+
+    def upsert_procedural(self, data: Dict[str, Any]) -> bool:
+        """Insert or replace a procedural memory record."""
+        conn = self._get_connection()
+        try:
+            now = datetime.utcnow().isoformat()
+            data.setdefault('created_at', now)
+            data['updated_at'] = now
+            conn.execute("""
+                INSERT OR REPLACE INTO procedural_memory (
+                    id, strategy, symbol, behavior_type, sample_size,
+                    avg_hold_winners, avg_hold_losers, disposition_ratio,
+                    actual_lot_mean, actual_lot_variance,
+                    kelly_fraction_suggested, lot_vs_kelly_ratio,
+                    created_at, updated_at
+                ) VALUES (
+                    :id, :strategy, :symbol, :behavior_type, :sample_size,
+                    :avg_hold_winners, :avg_hold_losers, :disposition_ratio,
+                    :actual_lot_mean, :actual_lot_variance,
+                    :kelly_fraction_suggested, :lot_vs_kelly_ratio,
+                    :created_at, :updated_at
+                )
+            """, data)
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error upserting procedural memory: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def query_procedural(
+        self,
+        strategy: Optional[str] = None,
+        symbol: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Query procedural memory records with filters."""
+        conn = self._get_connection()
+        try:
+            query = "SELECT * FROM procedural_memory WHERE 1=1"
+            params: list[Any] = []
+            if strategy:
+                query += " AND strategy = ?"
+                params.append(strategy)
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            query += " ORDER BY updated_at DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    # ========== OWM: Affective State ==========
+
+    def init_affective(self, peak_equity: float, current_equity: float) -> bool:
+        """Initialize affective state if not exists."""
+        conn = self._get_connection()
+        try:
+            existing = conn.execute(
+                "SELECT id FROM affective_state WHERE id = 'current'"
+            ).fetchone()
+            if existing:
+                return False
+            now = datetime.utcnow().isoformat()
+            conn.execute("""
+                INSERT INTO affective_state (
+                    id, confidence_level, risk_appetite, momentum_bias,
+                    peak_equity, current_equity, drawdown_state,
+                    max_acceptable_drawdown, consecutive_wins,
+                    consecutive_losses, last_updated, history_json
+                ) VALUES (
+                    'current', 0.5, 1.0, 0.0, ?, ?, 0.0, 0.20, 0, 0, ?, '[]'
+                )
+            """, (peak_equity, current_equity, now))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error initializing affective state: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def load_affective(self) -> Optional[Dict[str, Any]]:
+        """Load the current affective state."""
+        conn = self._get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM affective_state WHERE id = 'current'"
+            ).fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d['history_json'] = json.loads(d['history_json']) if d['history_json'] else []
+            return d
+        finally:
+            conn.close()
+
+    def save_affective(self, data: Dict[str, Any]) -> bool:
+        """Save (INSERT OR REPLACE) the current affective state."""
+        conn = self._get_connection()
+        try:
+            if isinstance(data.get('history_json'), (list, dict)):
+                data['history_json'] = json.dumps(data['history_json'])
+            data['id'] = 'current'
+            data.setdefault('last_updated', datetime.utcnow().isoformat())
+            conn.execute("""
+                INSERT OR REPLACE INTO affective_state (
+                    id, confidence_level, risk_appetite, momentum_bias,
+                    peak_equity, current_equity, drawdown_state,
+                    max_acceptable_drawdown, consecutive_wins,
+                    consecutive_losses, last_updated, history_json
+                ) VALUES (
+                    :id, :confidence_level, :risk_appetite, :momentum_bias,
+                    :peak_equity, :current_equity, :drawdown_state,
+                    :max_acceptable_drawdown, :consecutive_wins,
+                    :consecutive_losses, :last_updated, :history_json
+                )
+            """, data)
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving affective state: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ========== OWM: Prospective Memory ==========
+
+    def insert_prospective(self, data: Dict[str, Any]) -> bool:
+        """Insert a prospective memory record."""
+        conn = self._get_connection()
+        try:
+            if isinstance(data.get('trigger_condition'), (dict, list)):
+                data['trigger_condition'] = json.dumps(data['trigger_condition'])
+            if isinstance(data.get('planned_action'), (dict, list)):
+                data['planned_action'] = json.dumps(data['planned_action'])
+            if isinstance(data.get('source_episodic_ids'), (list,)):
+                data['source_episodic_ids'] = json.dumps(data['source_episodic_ids'])
+            if isinstance(data.get('source_semantic_ids'), (list,)):
+                data['source_semantic_ids'] = json.dumps(data['source_semantic_ids'])
+            data.setdefault('status', 'active')
+            data.setdefault('priority', 0.5)
+            data.setdefault('created_at', datetime.utcnow().isoformat())
+            conn.execute("""
+                INSERT INTO prospective_memory (
+                    id, trigger_type, trigger_condition, planned_action,
+                    action_type, status, priority, expiry,
+                    source_episodic_ids, source_semantic_ids, reasoning,
+                    triggered_at, outcome_pnl_r, outcome_reflection,
+                    created_at
+                ) VALUES (
+                    :id, :trigger_type, :trigger_condition, :planned_action,
+                    :action_type, :status, :priority, :expiry,
+                    :source_episodic_ids, :source_semantic_ids, :reasoning,
+                    :triggered_at, :outcome_pnl_r, :outcome_reflection,
+                    :created_at
+                )
+            """, data)
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error inserting prospective memory: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def query_prospective(
+        self,
+        status: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Query prospective memories with filters."""
+        conn = self._get_connection()
+        try:
+            query = "SELECT * FROM prospective_memory WHERE 1=1"
+            params: list[Any] = []
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            if trigger_type:
+                query += " AND trigger_type = ?"
+                params.append(trigger_type)
+            query += " ORDER BY priority DESC, created_at DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for row in rows:
+                d = dict(row)
+                d['trigger_condition'] = json.loads(d['trigger_condition']) if d['trigger_condition'] else {}
+                d['planned_action'] = json.loads(d['planned_action']) if d['planned_action'] else {}
+                d['source_episodic_ids'] = json.loads(d['source_episodic_ids']) if d['source_episodic_ids'] else []
+                d['source_semantic_ids'] = json.loads(d['source_semantic_ids']) if d['source_semantic_ids'] else []
+                results.append(d)
+            return results
+        finally:
+            conn.close()
+
+    def update_prospective_status(
+        self,
+        memory_id: str,
+        status: str,
+        triggered_at: Optional[str] = None,
+        outcome_pnl_r: Optional[float] = None,
+        outcome_reflection: Optional[str] = None,
+    ) -> bool:
+        """Update prospective memory status and optional outcome fields."""
+        conn = self._get_connection()
+        try:
+            fields = ["status = ?"]
+            params: list[Any] = [status]
+            if triggered_at:
+                fields.append("triggered_at = ?")
+                params.append(triggered_at)
+            if outcome_pnl_r is not None:
+                fields.append("outcome_pnl_r = ?")
+                params.append(outcome_pnl_r)
+            if outcome_reflection is not None:
+                fields.append("outcome_reflection = ?")
+                params.append(outcome_reflection)
+            params.append(memory_id)
+            result = conn.execute(
+                f"UPDATE prospective_memory SET {', '.join(fields)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
+            return result.rowcount > 0
+        except Exception as e:
+            print(f"Error updating prospective status: {e}")
             return False
         finally:
             conn.close()

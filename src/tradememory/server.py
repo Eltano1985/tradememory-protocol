@@ -7,6 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from .db import Database
 from .journal import TradeJournal
 from .state import StateManager
@@ -14,6 +18,12 @@ from .reflection import ReflectionEngine
 from .mt5_connector import MT5Connector
 from .adaptive_risk import AdaptiveRisk
 from .models import SessionState, TradeProposal, TradeDirection
+from .owm import ContextVector, outcome_weighted_recall
+from .owm.migration import (
+    migrate_trades_to_episodic,
+    migrate_patterns_to_semantic,
+    initialize_affective,
+)
 
 
 app = FastAPI(
@@ -601,8 +611,613 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "TradeMemory Protocol",
-        "version": "0.1.0"
+        "version": "0.4.0"
     }
+
+
+# ========== OWM (Outcome-Weighted Memory) Endpoints ==========
+
+def _ensure_tz(ts: Optional[str]) -> str:
+    """Ensure a timestamp string is timezone-aware (UTC)."""
+    if ts is None:
+        return datetime.now(timezone.utc).isoformat()
+    if "+" not in ts and "Z" not in ts and ts.count("-") <= 2:
+        return ts + "+00:00"
+    return ts
+
+
+def _update_semantic_from_trade(
+    db: Database,
+    symbol: str,
+    strategy_name: str,
+    pnl: float,
+    pnl_r: Optional[float],
+    context_regime: Optional[str],
+    trade_id: str,
+) -> None:
+    """Update semantic memories with Bayesian evidence from a new trade."""
+    existing = db.query_semantic(strategy=strategy_name, symbol=symbol, limit=10)
+    weight = min(2.0, abs(pnl_r)) if pnl_r is not None else 1.0
+    confirmed = pnl > 0
+
+    if existing:
+        for mem in existing:
+            db.update_semantic_bayesian(
+                memory_id=mem["id"],
+                confirmed=confirmed,
+                weight=weight,
+                evidence_id=trade_id,
+            )
+    else:
+        sem_id = f"sem-{strategy_name.lower()}-{symbol.lower()}-{uuid.uuid4().hex[:8]}"
+        alpha = 1.0 + (weight if confirmed else 0.0)
+        beta = 1.0 + (0.0 if confirmed else weight)
+        db.insert_semantic({
+            "id": sem_id,
+            "proposition": f"{strategy_name} on {symbol} tends to be profitable",
+            "alpha": alpha,
+            "beta": beta,
+            "sample_size": 1,
+            "strategy": strategy_name,
+            "symbol": symbol,
+            "regime": context_regime,
+            "volatility_regime": None,
+            "validity_conditions": {"symbol": symbol, "strategy": strategy_name},
+            "last_confirmed": trade_id if confirmed else None,
+            "last_contradicted": None if confirmed else trade_id,
+            "source": "remember_trade",
+            "retrieval_strength": 1.0,
+        })
+
+
+def _update_procedural_from_trade(
+    db: Database,
+    symbol: str,
+    strategy_name: str,
+    pnl: float,
+    lot_size: float = 0.0,
+) -> None:
+    """Update procedural memory with running averages from a new trade."""
+    proc_id = f"proc-{strategy_name.lower()}-{symbol.lower()}"
+    existing = db.query_procedural(strategy=strategy_name, symbol=symbol, limit=1)
+
+    if existing:
+        rec = existing[0]
+        n = rec.get("sample_size", 0)
+        new_n = n + 1
+        old_mean = rec.get("actual_lot_mean") or 0.0
+        new_mean = old_mean + (lot_size - old_mean) / new_n if new_n > 0 else lot_size
+        db.upsert_procedural({
+            "id": proc_id,
+            "strategy": strategy_name,
+            "symbol": symbol,
+            "behavior_type": "trade_execution",
+            "sample_size": new_n,
+            "avg_hold_winners": rec.get("avg_hold_winners") or 0.0,
+            "avg_hold_losers": rec.get("avg_hold_losers") or 0.0,
+            "disposition_ratio": rec.get("disposition_ratio"),
+            "actual_lot_mean": new_mean,
+            "actual_lot_variance": rec.get("actual_lot_variance") or 0.0,
+            "kelly_fraction_suggested": rec.get("kelly_fraction_suggested"),
+            "lot_vs_kelly_ratio": rec.get("lot_vs_kelly_ratio"),
+        })
+    else:
+        db.upsert_procedural({
+            "id": proc_id,
+            "strategy": strategy_name,
+            "symbol": symbol,
+            "behavior_type": "trade_execution",
+            "sample_size": 1,
+            "avg_hold_winners": 0.0,
+            "avg_hold_losers": 0.0,
+            "disposition_ratio": None,
+            "actual_lot_mean": lot_size,
+            "actual_lot_variance": 0.0,
+            "kelly_fraction_suggested": None,
+            "lot_vs_kelly_ratio": None,
+        })
+
+
+def _update_affective_from_trade(
+    db: Database,
+    pnl: float,
+    confidence: float,
+) -> None:
+    """Update affective state: EWMA confidence, streaks, equity/drawdown."""
+    state = db.load_affective()
+    ewma_alpha = 0.3
+
+    if state is None:
+        db.init_affective(peak_equity=10000.0, current_equity=10000.0)
+        state = db.load_affective()
+        if state is None:
+            return
+
+    old_conf = state.get("confidence_level", 0.5)
+    new_conf = ewma_alpha * confidence + (1 - ewma_alpha) * old_conf
+    new_conf = max(0.0, min(1.0, new_conf))
+
+    if pnl > 0:
+        consec_wins = state.get("consecutive_wins", 0) + 1
+        consec_losses = 0
+    else:
+        consec_wins = 0
+        consec_losses = state.get("consecutive_losses", 0) + 1
+
+    current_equity = state.get("current_equity", 10000.0) + pnl
+    peak_equity = max(state.get("peak_equity", current_equity), current_equity)
+    drawdown_state = (peak_equity - current_equity) / peak_equity if peak_equity > 0 else 0.0
+
+    db.save_affective({
+        "confidence_level": new_conf,
+        "risk_appetite": state.get("risk_appetite", 1.0),
+        "momentum_bias": state.get("momentum_bias", 0.0),
+        "peak_equity": peak_equity,
+        "current_equity": current_equity,
+        "drawdown_state": drawdown_state,
+        "max_acceptable_drawdown": state.get("max_acceptable_drawdown", 0.20),
+        "consecutive_wins": consec_wins,
+        "consecutive_losses": consec_losses,
+        "history_json": state.get("history_json", []),
+    })
+
+
+class RememberTradeRequest(BaseModel):
+    """Request for POST /owm/remember"""
+    symbol: str
+    direction: str
+    entry_price: float
+    exit_price: float
+    pnl: float
+    strategy_name: str
+    market_context: str
+    pnl_r: Optional[float] = None
+    context_regime: Optional[str] = None
+    context_atr_d1: Optional[float] = None
+    confidence: float = 0.5
+    reflection: Optional[str] = None
+    max_adverse_excursion: Optional[float] = None
+    trade_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+class RecallMemoriesRequest(BaseModel):
+    """Request for POST /owm/recall"""
+    symbol: str
+    market_context: str
+    context_regime: Optional[str] = None
+    context_atr_d1: Optional[float] = None
+    strategy_name: Optional[str] = None
+    memory_types: Optional[List[str]] = None
+    limit: int = 10
+
+
+class CreatePlanRequest(BaseModel):
+    """Request for POST /owm/plan"""
+    trigger_type: str
+    trigger_condition: str
+    planned_action: str
+    reasoning: str
+    expiry_days: int = 30
+    priority: float = 0.5
+
+
+@app.post("/owm/remember")
+async def owm_remember(req: RememberTradeRequest):
+    """Store a trade into OWM multi-layer memory with automatic updates."""
+    try:
+        db = journal.db
+        tid = req.trade_id or f"owm-{uuid.uuid4().hex[:12]}"
+        ts = req.timestamp or datetime.now(timezone.utc).isoformat()
+        direction_lower = req.direction.lower()
+        if direction_lower not in ("long", "short"):
+            raise HTTPException(status_code=400, detail=f"direction must be 'long' or 'short', got '{req.direction}'")
+        symbol_upper = req.symbol.upper()
+
+        context_dict = {
+            "symbol": symbol_upper,
+            "price": req.entry_price,
+            "regime": req.context_regime,
+            "atr_d1": req.context_atr_d1,
+            "description": req.market_context,
+        }
+
+        episodic_data = {
+            "id": tid,
+            "timestamp": ts,
+            "context_json": context_dict,
+            "context_regime": req.context_regime,
+            "context_volatility_regime": None,
+            "context_session": None,
+            "context_atr_d1": req.context_atr_d1,
+            "context_atr_h1": None,
+            "strategy": req.strategy_name,
+            "direction": direction_lower,
+            "entry_price": req.entry_price,
+            "lot_size": 0.0,
+            "exit_price": req.exit_price,
+            "pnl": req.pnl,
+            "pnl_r": req.pnl_r,
+            "hold_duration_seconds": None,
+            "max_adverse_excursion": req.max_adverse_excursion,
+            "reflection": req.reflection,
+            "confidence": req.confidence,
+            "tags": [],
+            "retrieval_strength": 1.0,
+            "retrieval_count": 0,
+            "last_retrieved": None,
+        }
+        db.insert_episodic(episodic_data)
+
+        _update_semantic_from_trade(db, symbol_upper, req.strategy_name, req.pnl, req.pnl_r, req.context_regime, tid)
+        _update_procedural_from_trade(db, symbol_upper, req.strategy_name, req.pnl)
+        _update_affective_from_trade(db, req.pnl, req.confidence)
+
+        trade_data = {
+            "id": tid,
+            "timestamp": ts,
+            "symbol": symbol_upper,
+            "direction": direction_lower,
+            "lot_size": 0.0,
+            "strategy": req.strategy_name,
+            "confidence": req.confidence,
+            "reasoning": req.market_context,
+            "market_context": {"description": req.market_context, "entry_price": req.entry_price},
+            "references": [],
+            "exit_timestamp": None,
+            "exit_price": req.exit_price,
+            "pnl": req.pnl,
+            "pnl_r": req.pnl_r,
+            "hold_duration": None,
+            "exit_reasoning": req.reflection,
+            "slippage": None,
+            "execution_quality": None,
+            "lessons": req.reflection,
+            "tags": [],
+            "grade": None,
+        }
+        db.insert_trade(trade_data)
+
+        return {
+            "memory_id": tid,
+            "symbol": symbol_upper,
+            "direction": direction_lower,
+            "strategy": req.strategy_name,
+            "stored_at": ts,
+            "memory_layers": ["episodic", "semantic", "procedural", "affective", "trade_records"],
+            "status": "stored",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/owm/recall")
+async def owm_recall(req: RecallMemoriesRequest):
+    """Recall memories using OWM outcome-weighted scoring."""
+    try:
+        db = journal.db
+        symbol_upper = req.symbol.upper()
+        memory_types = req.memory_types or ["episodic", "semantic"]
+
+        query_context = ContextVector(
+            symbol=symbol_upper,
+            regime=req.context_regime,
+            atr_d1=req.context_atr_d1,
+        )
+
+        candidates: List[Dict[str, Any]] = []
+
+        if "episodic" in memory_types:
+            episodic = db.query_episodic(strategy=req.strategy_name, limit=req.limit * 5)
+            for ep in episodic:
+                ctx = ep.get("context_json") or {}
+                ep_symbol = ctx.get("symbol")
+                if ep_symbol and ep_symbol != symbol_upper:
+                    continue
+                candidates.append({
+                    "id": ep["id"],
+                    "memory_type": "episodic",
+                    "timestamp": _ensure_tz(ep.get("timestamp")),
+                    "confidence": ep.get("confidence", 0.5),
+                    "context": ctx,
+                    "pnl_r": ep.get("pnl_r"),
+                    "pnl": ep.get("pnl"),
+                    "strategy": ep.get("strategy"),
+                    "direction": ep.get("direction"),
+                    "reflection": ep.get("reflection"),
+                })
+
+        if "semantic" in memory_types:
+            semantic = db.query_semantic(strategy=req.strategy_name, symbol=symbol_upper, limit=req.limit * 3)
+            for sem in semantic:
+                candidates.append({
+                    "id": sem["id"],
+                    "memory_type": "semantic",
+                    "timestamp": _ensure_tz(sem.get("updated_at") or sem.get("created_at")),
+                    "confidence": sem.get("confidence", 0.5),
+                    "context": {
+                        "symbol": sem.get("symbol"),
+                        "regime": sem.get("regime"),
+                        "volatility_regime": sem.get("volatility_regime"),
+                    },
+                    "proposition": sem.get("proposition"),
+                    "alpha": sem.get("alpha"),
+                    "beta": sem.get("beta"),
+                    "sample_size": sem.get("sample_size"),
+                })
+
+        affective = db.load_affective()
+        affective_state = None
+        if affective:
+            affective_state = {
+                "drawdown_state": affective.get("drawdown_state", 0.0),
+                "consecutive_losses": affective.get("consecutive_losses", 0),
+            }
+
+        scored = outcome_weighted_recall(
+            query_context=query_context,
+            memories=candidates,
+            affective_state=affective_state,
+            limit=req.limit,
+        )
+
+        results = []
+        for sm in scored:
+            entry: Dict[str, Any] = {
+                "memory_id": sm.memory_id,
+                "memory_type": sm.memory_type,
+                "score": round(sm.score, 6),
+                "components": {k: round(v, 6) for k, v in sm.components.items()},
+            }
+            if sm.memory_type == "episodic":
+                entry["strategy"] = sm.data.get("strategy")
+                entry["direction"] = sm.data.get("direction")
+                entry["pnl"] = sm.data.get("pnl")
+                entry["pnl_r"] = sm.data.get("pnl_r")
+                entry["reflection"] = sm.data.get("reflection")
+            elif sm.memory_type == "semantic":
+                entry["proposition"] = sm.data.get("proposition")
+                entry["confidence"] = sm.data.get("confidence")
+                entry["sample_size"] = sm.data.get("sample_size")
+            results.append(entry)
+
+        return {
+            "query_symbol": symbol_upper,
+            "query_context": req.market_context,
+            "query_regime": req.context_regime,
+            "memory_types_queried": memory_types,
+            "matches_found": len(results),
+            "affective_state": affective_state,
+            "memories": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/owm/behavioral")
+async def owm_behavioral(
+    strategy: Optional[str] = None,
+    symbol: Optional[str] = None,
+):
+    """Get behavioral analysis from procedural memory."""
+    try:
+        db = journal.db
+        records = db.query_procedural(
+            strategy=strategy,
+            symbol=symbol.upper() if symbol else None,
+            limit=100,
+        )
+
+        if not records:
+            return {"status": "no_data", "message": "No behavioral data yet"}
+
+        results = []
+        for rec in records:
+            results.append({
+                "strategy": rec.get("strategy"),
+                "symbol": rec.get("symbol"),
+                "avg_hold_winners": rec.get("avg_hold_winners"),
+                "avg_hold_losers": rec.get("avg_hold_losers"),
+                "disposition_ratio": rec.get("disposition_ratio"),
+                "lot_sizing_variance": rec.get("actual_lot_variance"),
+                "kelly_fraction_suggested": rec.get("kelly_fraction_suggested"),
+                "lot_vs_kelly_ratio": rec.get("lot_vs_kelly_ratio"),
+                "sample_size": rec.get("sample_size", 0),
+            })
+
+        return {
+            "status": "ok",
+            "count": len(results),
+            "behaviors": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/owm/state")
+async def owm_state():
+    """Get the current agent affective state."""
+    try:
+        db = journal.db
+        state = db.load_affective()
+
+        if state is None:
+            db.init_affective(peak_equity=10000.0, current_equity=10000.0)
+            state = db.load_affective()
+            if state is None:
+                raise HTTPException(status_code=500, detail="Failed to initialize affective state")
+
+        drawdown_pct = state.get("drawdown_state", 0.0)
+        if drawdown_pct > 0.6:
+            recommended_action = "stop_trading"
+        elif drawdown_pct > 0.3:
+            recommended_action = "reduce_size"
+        else:
+            recommended_action = "normal"
+
+        return {
+            "status": "ok",
+            "confidence_level": state.get("confidence_level", 0.5),
+            "risk_appetite": state.get("risk_appetite", 1.0),
+            "drawdown_pct": drawdown_pct,
+            "consecutive_wins": state.get("consecutive_wins", 0),
+            "consecutive_losses": state.get("consecutive_losses", 0),
+            "current_equity": state.get("current_equity", 0.0),
+            "peak_equity": state.get("peak_equity", 0.0),
+            "recommended_action": recommended_action,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/owm/plan")
+async def owm_plan(req: CreatePlanRequest):
+    """Create a prospective trading plan."""
+    try:
+        db = journal.db
+        plan_id = f"plan-{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc)
+        expiry = (now + timedelta(days=req.expiry_days)).isoformat()
+
+        try:
+            trigger_cond_parsed = json.loads(req.trigger_condition)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail=f"trigger_condition must be valid JSON, got: {req.trigger_condition}")
+
+        try:
+            planned_act_parsed = json.loads(req.planned_action)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail=f"planned_action must be valid JSON, got: {req.planned_action}")
+
+        data = {
+            "id": plan_id,
+            "trigger_type": req.trigger_type,
+            "trigger_condition": trigger_cond_parsed,
+            "planned_action": planned_act_parsed,
+            "action_type": planned_act_parsed.get("type", req.trigger_type),
+            "status": "active",
+            "priority": req.priority,
+            "expiry": expiry,
+            "source_episodic_ids": [],
+            "source_semantic_ids": [],
+            "reasoning": req.reasoning,
+            "triggered_at": None,
+            "outcome_pnl_r": None,
+            "outcome_reflection": None,
+        }
+        success = db.insert_prospective(data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to insert prospective plan")
+
+        return {
+            "plan_id": plan_id,
+            "status": "active",
+            "expiry": expiry,
+            "message": f"Trading plan created: {req.trigger_type} → {planned_act_parsed.get('type', 'action')}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/owm/plans")
+async def owm_plans(
+    regime: Optional[str] = None,
+    atr_d1: Optional[float] = None,
+):
+    """Check active trading plans against current market context."""
+    try:
+        db = journal.db
+        plans = db.query_prospective(status="active", limit=1000)
+
+        now = datetime.now(timezone.utc)
+        triggered = []
+        pending = []
+
+        for plan in plans:
+            expiry_str = plan.get("expiry")
+            if expiry_str:
+                try:
+                    expiry_dt = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+                    if expiry_dt.tzinfo is None:
+                        expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+                    if now > expiry_dt:
+                        db.update_prospective_status(plan["id"], "expired")
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+            trigger_cond = plan.get("trigger_condition", {})
+            if isinstance(trigger_cond, str):
+                try:
+                    trigger_cond = json.loads(trigger_cond)
+                except (json.JSONDecodeError, TypeError):
+                    trigger_cond = {}
+
+            matches = True
+            if trigger_cond:
+                cond_regime = trigger_cond.get("regime")
+                if cond_regime and regime and cond_regime != regime:
+                    matches = False
+                cond_atr_min = trigger_cond.get("atr_d1_min")
+                if cond_atr_min is not None and atr_d1 is not None:
+                    if atr_d1 < cond_atr_min:
+                        matches = False
+                cond_atr_max = trigger_cond.get("atr_d1_max")
+                if cond_atr_max is not None and atr_d1 is not None:
+                    if atr_d1 > cond_atr_max:
+                        matches = False
+                if cond_regime and regime is None:
+                    matches = False
+                if (cond_atr_min is not None or cond_atr_max is not None) and atr_d1 is None:
+                    matches = False
+
+            plan_summary = {
+                "plan_id": plan["id"],
+                "trigger_type": plan.get("trigger_type"),
+                "trigger_condition": trigger_cond,
+                "planned_action": plan.get("planned_action"),
+                "priority": plan.get("priority"),
+                "reasoning": plan.get("reasoning"),
+                "expiry": plan.get("expiry"),
+            }
+
+            if matches:
+                triggered.append(plan_summary)
+            else:
+                pending.append(plan_summary)
+
+        return {
+            "active_count": len(triggered) + len(pending),
+            "triggered": triggered,
+            "pending": pending,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/owm/migrate")
+async def owm_migrate():
+    """Trigger OWM migration: trades→episodic, patterns→semantic, initialize affective."""
+    try:
+        db = journal.db
+        episodic_count = migrate_trades_to_episodic(db)
+        semantic_count = migrate_patterns_to_semantic(db)
+        affective_ok = initialize_affective(db)
+
+        return {
+            "success": True,
+            "episodic_migrated": episodic_count,
+            "semantic_migrated": semantic_count,
+            "affective_initialized": affective_ok,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def main():
