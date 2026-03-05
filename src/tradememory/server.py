@@ -29,7 +29,7 @@ from .owm.migration import (
 app = FastAPI(
     title="TradeMemory Protocol",
     description="AI Agent Trading Memory & Adaptive Decision Layer",
-    version="0.1.0"
+    version="0.4.0"
 )
 
 # Initialize modules
