@@ -32,7 +32,7 @@ DB_PATH = os.environ.get("TM_HOSTED_DB", "hosted/hosted.db")
 app = FastAPI(
     title="TradeMemory Hosted API",
     description="Multi-tenant AI Trading Memory API",
-    version="0.3.1",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -417,7 +417,7 @@ class RecallTradesResponse(BaseModel):
 @app.get("/api/v1/health")
 async def health():
     """Health check — no auth required."""
-    return {"status": "healthy", "version": "0.3.1"}
+    return {"status": "healthy", "version": "0.4.0"}
 
 
 @app.post("/api/v1/trades", status_code=201, response_model=StoreTradeResponse)

@@ -1,6 +1,6 @@
 # TradeMemory Protocol
 
-> Platform-agnostic 3-layer memory system for AI trading agents via MCP. Accepts standardized trade data from any source (MT5, Binance, Alpaca) and provides structured memory with LLM-powered reflection.
+> Platform-agnostic AI trading memory system with Outcome-Weighted Memory (OWM) architecture via MCP. Accepts standardized trade data from any source (MT5, Binance, Alpaca) and provides structured memory with LLM-powered reflection.
 
 TradeMemory Protocol is an open-source memory layer for AI-assisted trading systems. It does NOT connect to trading platforms directly — it accepts standardized trade data and organizes it into three layers:
 
