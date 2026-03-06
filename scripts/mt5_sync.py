@@ -25,6 +25,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from dotenv import load_dotenv
 
+# Add scripts/ to path so we can import trade_advisor
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from trade_advisor import advise_on_open, send_discord_alert
+
 # ---------------------------------------------------------------------------
 # Discord Webhook helper
 # ---------------------------------------------------------------------------
@@ -252,6 +256,70 @@ def get_new_closed_trades(last_synced_ticket: int) -> Tuple[list, bool]:
     return new_trades, False
 
 
+# Track known open positions to detect NEW opens
+_known_open_tickets: set = set()
+
+
+def check_new_open_positions():
+    """
+    Detect newly opened positions and run trade advisor.
+    Only fires once per position (tracked by _known_open_tickets).
+    """
+    import MetaTrader5 as MT5
+    global _known_open_tickets
+
+    positions, timed_out = mt5_api_call_with_timeout(MT5.positions_get, timeout_seconds=10)
+    if timed_out or positions is None:
+        return
+
+    current_tickets = {p.ticket for p in positions}
+
+    # Find NEW positions (not seen before)
+    new_tickets = current_tickets - _known_open_tickets
+
+    for pos in positions:
+        if pos.ticket not in new_tickets:
+            continue
+
+        # Resolve strategy
+        strategy = MAGIC_TO_STRATEGY.get(pos.magic, f"Unknown_Magic_{pos.magic}")
+        direction = "long" if pos.type == 0 else "short"
+
+        # Determine session
+        hour = datetime.now(timezone.utc).hour
+        if 0 <= hour < 8:
+            session = "asian"
+        elif 8 <= hour < 16:
+            session = "london"
+        else:
+            session = "newyork"
+
+        log.info(f"[ADVISOR] New position detected: {strategy} {pos.symbol} {direction} @ {pos.price_open:.2f}")
+
+        try:
+            warning = advise_on_open(
+                symbol=pos.symbol,
+                direction=direction,
+                strategy=strategy,
+                entry_price=pos.price_open,
+                lot_size=pos.volume,
+                session=session,
+                ticket=pos.ticket,
+            )
+
+            if warning:
+                log.info(f"[ADVISOR] Warning issued for ticket {pos.ticket}")
+                send_discord_alert(warning)
+            else:
+                log.info(f"[ADVISOR] No warnings for ticket {pos.ticket} (all clear)")
+
+        except Exception as e:
+            log.error(f"[ADVISOR] Error advising on ticket {pos.ticket}: {e}")
+
+    # Update known set (also remove closed positions)
+    _known_open_tickets = current_tickets
+
+
 def sync_trade_to_memory(position: Dict[str, Any]) -> bool:
     """
     Sync one closed position to TradeMemory.
@@ -441,7 +509,13 @@ def main_loop():
                         log.error(f"MT5 reconnect failed ({consecutive_errors})")
                         raise ConnectionError("MT5 not responsive")
 
-                # Check for new trades (with timeout protection)
+                # Check for new OPEN positions → run trade advisor
+                try:
+                    check_new_open_positions()
+                except Exception as e:
+                    log.error(f"[ADVISOR] check_new_open_positions error: {e}")
+
+                # Check for new CLOSED trades (with timeout protection)
                 new_trades, timed_out = get_new_closed_trades(last_synced_ticket)
 
                 if timed_out:
